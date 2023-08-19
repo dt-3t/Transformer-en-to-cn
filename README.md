@@ -42,6 +42,6 @@ python transformer.py --cfg train
 python transformer.py --cfg predict
 ```
 
-此处提供一个可用参考权重下载：[百度网盘](https://pan.baidu.com/s/1M_EGwN7N7o7eLa8VlRd4eA?pwd=d8kz)
+此处提供一个可用的权重：[百度网盘](https://pan.baidu.com/s/1M_EGwN7N7o7eLa8VlRd4eA?pwd=d8kz)
 
 注意训练与预测的具体参数设置都位于`transformer.py`中。
