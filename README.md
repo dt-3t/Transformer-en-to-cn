@@ -32,6 +32,8 @@
 python transformer.py --cfg train
 ```
 
+注意训练结束只会保存最终权重，而不是最优权重。
+
 ### 预测
 
 要进行预测，请执行以下命令：
@@ -39,5 +41,7 @@ python transformer.py --cfg train
 ```bash
 python transformer.py --cfg predict
 ```
+
+此处提供一个可用参考权重下载：[百度网盘](https://pan.baidu.com/s/1M_EGwN7N7o7eLa8VlRd4eA?pwd=d8kz)
 
 注意训练与预测的具体参数设置都位于`transformer.py`中。
