@@ -5,9 +5,10 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.optim import lr_scheduler
 from torch.utils.data import DataLoader, TensorDataset
-from data import download_data, data_read
+from data import data_read
 import os
 import argparse
+from torch.utils.data import random_split
 
 
 # 将句子中的单词转换为词典中的索引.
@@ -265,17 +266,16 @@ if __name__ == '__main__':
     end_num = 3  # 句子结束符号
     lr = 0.0002  # 学习率
     eph = 60  # 训练轮数
-    model_pth = 'model.pth'  # 模型路径
+    model_pth = 'model/best.pth'  # 模型路径
+    predict_folder = 'predict'  # 预测文件夹
+    dataset_pth = 'data'  # 数据集路径
+    train_model_pth = 'model'  # 训练模型保存路径
 
     args = parse_arguments()
     mode = args.cfg
 
-    # 如果不存在数据集，则下载数据集
-    if not os.path.exists('data'):
-        download_data()
-
     # 读入数据
-    dataset_pth = 'data/'  # 数据集路径
+
     input_dic_max_index, target_dic_max_index, en_dic, cn_dic, data_train, target_number_to_word = data_read(dataset_pth, mode)
 
     # 模型
@@ -292,12 +292,14 @@ if __name__ == '__main__':
     enc_inputs, dec_inputs, target = enc_inputs.to(device), dec_inputs.to(device), target.to(device)
 
     if mode == 'predict':
+        if not os.path.exists(predict_folder):
+            os.mkdir(predict_folder)
         train_dataset = TensorDataset(enc_inputs)
         train_loader = DataLoader(train_dataset, batch_size=1, shuffle=False)
-
         model.load_state_dict(torch.load(model_pth))
         model.eval()
         predict = []
+        sentence_index = 0
         for batch_enc_inputs in train_loader:
             # 构造batch_dec_inputs，形状为(batch_size, max_len)，全部填充pad_num
             batch_enc_inputs = batch_enc_inputs[0]
@@ -316,39 +318,77 @@ if __name__ == '__main__':
             # 将batch_dec_inputs中的数字转换为单词
             tmp = batch_dec_inputs[0].squeeze().cpu().numpy()
             output_words = [target_number_to_word[x] for i, x in enumerate(tmp) if x not in {0, 3}]
+            predict.append(data_train[0][sentence_index])
             predict.append(' '.join(output_words))
-        with open('predict.txt', 'w', encoding='utf-8') as file:
+            predict.append('')
+            sentence_index += 1
+        # 将model_pth中的'/'符号替换为'.'
+        model_pth_tmp = model_pth.replace('/', '.')
+        predict_file_name = os.path.join(model_pth_tmp[:-4] + '_predict')
+        file_names = os.listdir(predict_folder)
+        file_index_tmp = 0
+        for file_name in file_names:
+            if file_name[:-6] == predict_file_name:
+                file_index_tmp += 1
+        predict_file_name += '_' + str(file_index_tmp) + '.txt'
+        file_pth = os.path.join(predict_folder, predict_file_name)
+        with open(file_pth, 'w', encoding='utf-8') as file:
             for line in predict:
                 file.write(line + '\n')
         exit()
 
     # 将数据放入DataLoader
     train_dataset = TensorDataset(enc_inputs, dec_inputs, target)
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
+    # 计算数据集中每个部分的数量
+    total_samples = len(train_dataset)
+    train_size = int(0.7 * total_samples)
+    val_size = int(0.15 * total_samples)
+    test_size = total_samples - train_size - val_size
+
+    # 根据划分比例随机分割数据集
+    train_dataset, val_dataset, test_dataset = random_split(train_dataset, [train_size, val_size, test_size])
+
+    # 创建数据加载器
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size)
+
+    if not os.path.exists(train_model_pth):
+        os.mkdir(train_model_pth)
+    folder_names = os.listdir(train_model_pth)
+    folder_index = folder_names.__len__()
+    train_model_pth = os.path.join(train_model_pth, 'train_' + str(folder_index))
+    os.mkdir(train_model_pth)
     # 训练
     model.train()
+    best_val_loss = 1e9
+    print('Start training...')
     for epoch in range(eph):
         for batch_enc_inputs, batch_dec_inputs, batch_target in train_loader:
             optimizer.zero_grad()
-
             batch_outputs = model(batch_enc_inputs, batch_dec_inputs)
-
-            # 每10个epoch打印一次结果
-            if epoch % 10 == 0:
-                batch_predict = batch_outputs.data.max(2, keepdim=True)[1]
-                tmp = batch_predict[0].squeeze().cpu().numpy()
-                output_words = [target_number_to_word[x] for i, x in enumerate(tmp) if x not in {0, 3}]
-                print(' '.join(output_words))
-
             batch_loss = criterion(batch_outputs.transpose(-1, -2), batch_target)
-            print('Epoch:', '%04d' % (epoch + 1), 'loss =', '{:.6f}'.format(batch_loss), 'lr =',
-                  '{:.6f}'.format(scheduler.get_last_lr()[0]))
-
             batch_loss.backward()
             optimizer.step()
-
             scheduler.step()
+        # 在验证集上测试
+        model.eval()
+        with torch.no_grad():
+            val_loss = 0
+            for batch_enc_inputs, batch_dec_inputs, batch_target in val_loader:
+                batch_outputs = model(batch_enc_inputs, batch_dec_inputs)
+                batch_loss = criterion(batch_outputs.transpose(-1, -2), batch_target)
+                val_loss += batch_loss
+            pre_val_loss = val_loss
+            print('Epoch:', '%04d' % (epoch + 1), 'val_loss =', '{:.6f}'.format(val_loss))
+            # 保存最好的模型
+            if val_loss < best_val_loss:
+                if os.path.exists(os.path.join(train_model_pth, 'best.pth')):
+                    os.remove(os.path.join(train_model_pth, 'best.pth'))
+                torch.save(model.state_dict(), os.path.join(train_model_pth, 'best.pth'))
+                best_val_loss = val_loss
+        model.train()
 
-    # 保存模型
-    torch.save(model.state_dict(), 'model.pth')
+    # 保存最后的模型
+    torch.save(model.state_dict(), os.path.join(train_model_pth, 'last.pth'))

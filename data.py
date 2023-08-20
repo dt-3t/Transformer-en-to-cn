@@ -28,6 +28,7 @@ def download_data():
 
 
 def data_read(pth, mode):
+    pth += '/'
     # 读入训练语料还是预测语料
     if mode == 'train':
         en_txt_file_name = 'en.txt'
