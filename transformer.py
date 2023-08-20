@@ -13,19 +13,28 @@ from torch.utils.data import random_split
 
 # 将句子中的单词转换为词典中的索引.
 def word_to_index(dic_input, dic_target, data):
+    max_len_tmp = 0
+    for seq in data[0]:
+        max_len_tmp = max(max_len_tmp, len(seq.split()))
+    for seq in data[1]:
+        max_len_tmp = max(max_len_tmp, len(seq.split()))
+    for seq in data[2]:
+        max_len_tmp = max(max_len_tmp, len(seq.split()))
+    max_len_tmp += 3
+
     enc_inputs, dec_inputs, target = [], [], []
     for seq in data[0]:
         enc_inputs.append(
-            [dic_input.get(word, unk_num) for word in seq.split()] + [pad_num] * (max_len - len(seq.split())))
+            [dic_input.get(word, unk_num) for word in seq.split()] + [pad_num] * (max_len_tmp - len(seq.split())))
     for seq in data[1]:
         dec_inputs.append(
-            [dic_target.get(word, unk_num) for word in seq.split()] + [pad_num] * (max_len - len(seq.split())))
+            [dic_target.get(word, unk_num) for word in seq.split()] + [pad_num] * (max_len_tmp - len(seq.split())))
     for seq in data[2]:
         target.append(
-            [dic_target.get(word, unk_num) for word in seq.split()] + [pad_num] * (max_len - len(seq.split())))
+            [dic_target.get(word, unk_num) for word in seq.split()] + [pad_num] * (max_len_tmp - len(seq.split())))
 
     enc_inputs_tensor , dec_inputs_tensor , target_tensor = torch.LongTensor(enc_inputs) , torch.LongTensor(dec_inputs) , torch.LongTensor(target)
-    return enc_inputs_tensor, dec_inputs_tensor, target_tensor
+    return enc_inputs_tensor, dec_inputs_tensor, target_tensor, max_len_tmp
 
 
 # 在训练时，我们需要对输入进行mask。此函数用于生成mask矩阵，即一个上三角矩阵，其中对角线以下的元素全为0，对角线及以上的元素全为1。
@@ -247,19 +256,29 @@ def parse_arguments():
     parser.add_argument("--cfg", required=True, type=str, help="Train or predict.")
     return parser.parse_args()
 
+def fill_with_pad(tensor):
+    mask = tensor.eq(end_num)
+    nonzero_indices = torch.nonzero(mask)
+    flg = torch.tensor([0] * nonzero_indices.shape[0])
+    for pos_index in nonzero_indices:
+        if flg[pos_index[0]] == 1:
+            continue
+        tensor[pos_index[0], pos_index[1] + 1:] = pad_num
+        flg[pos_index[0]] = 1
+    return tensor
 
 if __name__ == '__main__':
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # 参数
-    batch_size = 100
+    batch_size = 900
     d_model = 512  # 词嵌入维度
     d_ff = 2048  # 前馈网络隐藏维度
     d_k = d_v = 64  # 每个头的维度
     n_layers = 6  # EncoderLayer和DecoderLayer堆叠的数量
     n_heads = 8  # 多头注意力的头数
-    max_len = 100  # 句子最大长度
+    max_len = 50  # 句子最大长度
     unk_num = 1  # 未知词的编号
     pad_num = 0  # pad符号的编号
     start_num = 2  # 句子起始符号
@@ -288,19 +307,19 @@ if __name__ == '__main__':
     scheduler = lr_scheduler.StepLR(optimizer, step_size=400, gamma=0.85)
 
     # 将字符串转换为索引
-    enc_inputs, dec_inputs, target = word_to_index(en_dic, cn_dic, data_train)
+    enc_inputs, dec_inputs, target, max_len = word_to_index(en_dic, cn_dic, data_train)
     enc_inputs, dec_inputs, target = enc_inputs.to(device), dec_inputs.to(device), target.to(device)
 
     if mode == 'predict':
         if not os.path.exists(predict_folder):
             os.mkdir(predict_folder)
-        train_dataset = TensorDataset(enc_inputs)
-        train_loader = DataLoader(train_dataset, batch_size=1, shuffle=False)
+        predict_dataset = TensorDataset(enc_inputs)
+        predict_loader = DataLoader(predict_dataset, batch_size=1, shuffle=False)
         model.load_state_dict(torch.load(model_pth))
         model.eval()
         predict = []
         sentence_index = 0
-        for batch_enc_inputs in train_loader:
+        for batch_enc_inputs in predict_loader:
             # 构造batch_dec_inputs，形状为(batch_size, max_len)，全部填充pad_num
             batch_enc_inputs = batch_enc_inputs[0]
             batch_dec_inputs = torch.full((1, max_len), pad_num, dtype=torch.long).to(device)
@@ -376,11 +395,21 @@ if __name__ == '__main__':
         model.eval()
         with torch.no_grad():
             val_loss = 0
-            for batch_enc_inputs, batch_dec_inputs, batch_target in val_loader:
-                batch_outputs = model(batch_enc_inputs, batch_dec_inputs)
+            for batch_enc_inputs, _, batch_target in val_loader:
+                # 构造batch_dec_inputs，形状为(batch_size, max_len)，全部填充pad_num
+                batch_dec_inputs = torch.full((batch_enc_inputs.size(0), max_len), pad_num, dtype=torch.long).to(device)
+                batch_dec_inputs[:, 0] = start_num  # 将batch_dec_inputs的第一个位置设置为start_num
+                # 开始预测
+                now_pos = 0
+                while now_pos < max_len - 1:
+                    batch_outputs = model(batch_enc_inputs, batch_dec_inputs)
+                    batch_predict = batch_outputs.data.max(2, keepdim=True)[1].squeeze()
+                    batch_dec_inputs[:, now_pos + 1] = batch_predict[:, now_pos]  # 将batch_dec_inputs的第now_pos+1个位置设置为预测值
+                    now_pos += 1
+                # 找到batch_dec_inputs中的end_num，将其后面的部分全部置为pad_num
+                #batch_dec_inputs = fill_with_pad(batch_dec_inputs)
                 batch_loss = criterion(batch_outputs.transpose(-1, -2), batch_target)
                 val_loss += batch_loss
-            pre_val_loss = val_loss
             print('Epoch:', '%04d' % (epoch + 1), 'val_loss =', '{:.6f}'.format(val_loss))
             # 保存最好的模型
             if val_loss < best_val_loss:
