@@ -1,3 +1,6 @@
+import argparse
+import os
+
 import math
 import numpy as np
 import torch
@@ -5,10 +8,9 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.optim import lr_scheduler
 from torch.utils.data import DataLoader, TensorDataset
-from data import data_read
-import os
-import argparse
 from torch.utils.data import random_split
+
+from data import data_read
 
 
 # 将句子中的单词转换为词典中的索引.
@@ -24,7 +26,8 @@ def word_to_index(dic_input, dic_target, data):
         target.append(
             [dic_target.get(word, unk_num) for word in seq.split()] + [pad_num] * (max_len - len(seq.split())))
 
-    enc_inputs_tensor , dec_inputs_tensor , target_tensor = torch.LongTensor(enc_inputs) , torch.LongTensor(dec_inputs) , torch.LongTensor(target)
+    enc_inputs_tensor, dec_inputs_tensor, target_tensor = torch.LongTensor(enc_inputs), torch.LongTensor(
+        dec_inputs), torch.LongTensor(target)
     return enc_inputs_tensor, dec_inputs_tensor, target_tensor
 
 
@@ -240,6 +243,7 @@ class Transformer(nn.Module):
         dec_logits = self.to_dic(dec_outputs)  # 将输出映射到词表大小，dec_logits形状为(batch_size, tgt_len, tgt_vocab_size)
         return dec_logits
 
+
 class LabelSmoothingLoss(nn.Module):
     def __init__(self, smoothing=0.0, num_classes=2):
         super(LabelSmoothingLoss, self).__init__()
@@ -254,6 +258,7 @@ class LabelSmoothingLoss(nn.Module):
             true_dist.fill_(self.smoothing / (self.num_classes - 1))
             true_dist.scatter_(1, target.unsqueeze(1), self.confidence)
         return torch.mean(torch.sum(-true_dist * pred, dim=-1))
+
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Detect script with --cfg option.")
@@ -273,6 +278,7 @@ def fill_with_pad(tensor):
         flg[pos_index[0]] = 1
     return tensor
 
+
 def warmup_lr_scheduler(optimizer, warmup_iters, warmup_factor):
     def f(x):
         if x >= warmup_iters:
@@ -281,6 +287,7 @@ def warmup_lr_scheduler(optimizer, warmup_iters, warmup_factor):
         return warmup_factor * (1 - alpha) + alpha  # 意义为学习率缩放倍数
 
     return torch.optim.lr_scheduler.LambdaLR(optimizer, f)
+
 
 if __name__ == '__main__':
 
@@ -308,7 +315,8 @@ if __name__ == '__main__':
 
     # 读入数据
 
-    input_dic_max_index, target_dic_max_index, en_dic, cn_dic, data_train, target_number_to_word = data_read(dataset_pth, mode)
+    input_dic_max_index, target_dic_max_index, en_dic, cn_dic, data_train, target_number_to_word = data_read(
+        dataset_pth, mode)
 
     # 模型
     model = Transformer()
@@ -429,7 +437,8 @@ if __name__ == '__main__':
             if scheduler is not None:
                 scheduler.step()
         current_lr = optimizer.param_groups[0]['lr']
-        print('Epoch:', '%04d' % (epoch + 1), 'train_loss =', '{:.6f}'.format(train_loss), 'lr =', '{:.6f}'.format(current_lr))
+        print('Epoch:', '%04d' % (epoch + 1), 'train_loss =', '{:.6f}'.format(train_loss), 'lr =',
+              '{:.6f}'.format(current_lr))
         # 在验证集上测试
         if epoch >= val_epoch:
             model.eval()
@@ -437,7 +446,8 @@ if __name__ == '__main__':
                 val_loss = 0
                 for batch_enc_inputs, _, batch_target in val_loader:
                     # 构造batch_dec_inputs，形状为(batch_size, max_len)，全部填充pad_num
-                    batch_dec_inputs = torch.full((batch_enc_inputs.size(0), max_len), pad_num, dtype=torch.long).to(device)
+                    batch_dec_inputs = torch.full((batch_enc_inputs.size(0), max_len), pad_num, dtype=torch.long).to(
+                        device)
                     batch_dec_inputs[:, 0] = start_num  # 将batch_dec_inputs的第一个位置设置为start_num
                     outputs_scores = torch.zeros(batch_enc_inputs.size(0), max_len, target_dic_max_index).to(device)
                     # 开始预测
@@ -450,17 +460,18 @@ if __name__ == '__main__':
                         batch_dec_inputs[:, now_pos + 1] = batch_predict.squeeze()
                         now_pos += 1
                     # 找到batch_dec_inputs中的end_num，将其后面的部分全部置为pad_num
-                    #batch_dec_inputs = fill_with_pad(batch_dec_inputs)
+                    # batch_dec_inputs = fill_with_pad(batch_dec_inputs)
                     outputs_scores = outputs_scores.view(-1, batch_outputs.size(-1))
                     batch_target = batch_target.view(-1)
                     val_loss = criterion(outputs_scores, batch_target)
-                    #val_loss /= batch_enc_inputs.size(0)
+                    # val_loss /= batch_enc_inputs.size(0)
                     # 将batch_dec_inputs[0]中的数字转换为单词，输出
                     tmp = batch_dec_inputs[0].squeeze().cpu().numpy()
                     output_words = [target_number_to_word[x] for i, x in enumerate(tmp) if x not in {0, 3}]
                     print(' '.join(output_words))
                 current_lr = optimizer.param_groups[0]['lr']
-                print('Epoch:', '%04d' % (epoch + 1), 'val_loss =', '{:.6f}'.format(val_loss), 'lr =', '{:.6f}'.format(current_lr))
+                print('Epoch:', '%04d' % (epoch + 1), 'val_loss =', '{:.6f}'.format(val_loss), 'lr =',
+                      '{:.6f}'.format(current_lr))
                 print()
                 # 保存最好的模型
                 if val_loss < best_val_loss:

@@ -1,32 +1,3 @@
-import os
-import requests
-
-
-def download(url, dir, name=None):
-    os.makedirs(dir, exist_ok=True)
-    if name is None:
-        name = url.split('/')[-1]
-    path = os.path.join(dir, name)
-    if not os.path.exists(path):
-        print(f'Install {name} ...')
-        open(path, 'wb').write(requests.get(url).content)
-        print('Install successfully.')
-
-
-def download_data():
-    data_dir = 'data'
-    urls = [('https://raw.githubusercontent.com/P3n9W31/transformer-pytorch/'
-             'master/corpora/cn.txt'),
-            ('https://raw.githubusercontent.com/P3n9W31/transformer-pytorch/'
-             'master/corpora/en.txt'),
-            ('https://raw.githubusercontent.com/P3n9W31/transformer-pytorch/'
-             'master/preprocessed/cn.txt.vocab.tsv'),
-            ('https://raw.githubusercontent.com/P3n9W31/transformer-pytorch/'
-             'master/preprocessed/en.txt.vocab.tsv')]
-    for url in urls:
-        download(url, data_dir)
-
-
 def data_read(pth, mode):
     pth += '/'
     # 读入训练语料还是预测语料
@@ -75,7 +46,3 @@ def data_read(pth, mode):
     target_dic_max_index = max(cn_dic.values()) + 1
 
     return input_dic_max_index, target_dic_max_index, en_dic, cn_dic, data_train, target_number_to_word
-
-
-if __name__ == '__main__':
-    download_data()

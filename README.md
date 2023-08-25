@@ -2,6 +2,10 @@
 
 这个项目涉及两个主要部分：`data.py` 和 `transformer.py`。其中`data.py` 包含数据处理模块。 `transformer.py`包含transformer模型，训练和预测模块。
 
+### 环境配置
+
+运行`pip install -r requirements.txt`以安装依赖包。
+
 ### 文件结构
 
 项目的文件结构如下：
@@ -11,7 +15,7 @@
 - `data/`: 存放数据集的文件夹。
 - `README.md`: 项目说明文档，你正在阅读的内容。
 
-## 数据集
+### 数据集
 
 项目已经包含了所需的数据集，无需手动下载。数据集文件存放在`data/`文件夹中。
 
