@@ -4,7 +4,7 @@
 
 ### 环境配置
 
-运行`pip install -r requirements.txt`以安装依赖包。
+运行`pip install -r requirements.txt`以安装额外的依赖包。其他都在标准库内。
 
 ### 文件结构
 
@@ -28,6 +28,8 @@
 
 `cn.txt`与`en.txt`中每行为一句话，一句话中任何两两相邻的词语和标点符号之间都使用空格分隔，以便于分词。
 
+PS：事实上，这个数据集对于Transformer模型来说太小了。
+
 ### 训练
 
 要训练模型，请执行以下命令：
@@ -48,6 +50,7 @@ python transformer.py --cfg predict
 
 预测的结果将会保存在`predict`文件夹中。文件名命名格式为`模型_predict_第几次预测.txt`。文件内容包含原句子与模型翻译的句子。
 
-此处提供一个可用的权重下载：[百度网盘](https://pan.baidu.com/s/1M_EGwN7N7o7eLa8VlRd4eA?pwd=d8kz)
+此处提供一个可用的权重下载：[百度网盘](https://pan.baidu.com/s/1voHRUyXN9zzwCKob9dWLMQ?pwd=jntm)
+（由于数据集太小，在训练集之外的表现不佳。）
 
 注意训练与预测的具体参数设置都位于`transformer.py`中。
